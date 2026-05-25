@@ -65,11 +65,11 @@ The system eliminates three critical LLM failures that plague every AI research 
                            ▼
 ┌─────────────────────────────────────────────────────────────┐
 │              PHASE 5: FINAL REPORT                           │
-│   ✅ Executive Summary                                       │
-│   ✅ Key Findings with Confidence Ratings                    │
-│   ✅ What Was Challenged & How It Was Addressed              │
-│   ✅ Remaining Caveats                                       │
-│   ✅ Full Source Citations                                    │
+│   -Executive Summary                                       │
+│   -Key Findings with Confidence Ratings                    │
+│   -What Was Challenged & How It Was Addressed              │
+│   -Remaining Caveats                                       │
+│   - Full Source Citations                                    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -172,24 +172,24 @@ The dashboard starts on **http://localhost:5060**
 
 ### Dashboard Features
 
-#### 🔬 Research Tab
+#### Research Tab
 - Enter any research topic
 - Configure rounds, agents, depth, and output format
 - One-click adversarial research execution
 - Live stats (total runs, completed, running, avg rounds)
 - Recent results with progress indicators
 
-#### ⚡ Active Tab
+#### Active Tab
 - Real-time view of running research pipelines
 - Phase progress bars
 - Current round and status
 
-#### 📋 History Tab
+#### History Tab
 - Full history of all research runs
 - Status, phase, round tracking
 - Click any run to see full details
 
-#### 🔑 API Keys Tab
+#### API Keys Tab
 - Add keys for any supported provider:
   - **OpenAI** (GPT-4o, GPT-4 Turbo)
   - **OpenRouter** (Claude, Gemini, Llama, etc.)
@@ -202,7 +202,7 @@ The dashboard starts on **http://localhost:5060**
 - Keys stored locally in SQLite (never sent anywhere except the provider)
 - Masked display for security
 
-#### ⚙️ Settings Tab
+#### Settings Tab
 - Default pipeline settings
 - System health info
 - Database status
@@ -246,10 +246,10 @@ The loop exits when:
 ### Via Dashboard (Recommended)
 
 1. Open http://localhost:5060
-2. Click "🔑 API Keys" in the navigation
+2. Click "API Keys" in the navigation
 3. Select your provider from the dropdown
 4. Enter your API key name and value
-5. Click "💾 Save API Key"
+5. Click "Save API Key"
 6. The key is stored locally in SQLite and marked as Active
 
 ### Via Environment Variables
