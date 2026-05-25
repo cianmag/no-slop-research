@@ -274,11 +274,28 @@ def get_run(run_id):
     phases = conn.execute("SELECT * FROM phase_results WHERE run_id = ? ORDER BY round_num, id", (run_id,)).fetchall()
     subagents = conn.execute("SELECT * FROM subagent_logs WHERE run_id = ? ORDER BY round_num, id", (run_id,)).fetchall()
 
-    return jsonify({
-        "run": dict(run),
-        "phases": [dict(p) for p in phases],
-        "subagents": [dict(s) for s in subagents]
-    })
+    def safe_dict(row, truncate_large=True):
+        """Convert Row to dict, sanitizing all text for safe JSON serialization."""
+        d = dict(row)
+        for k, v in d.items():
+            if isinstance(v, str):
+                # Remove null bytes and normalize line endings
+                v = v.replace('\x00', '').replace('\r\n', '\n').replace('\r', '')
+                # Escape any remaining control characters
+                v = ''.join(ch if ord(ch) >= 32 or ch in '\n\t' else '' for ch in v)
+                if truncate_large and len(v) > 2000:
+                    v = v[:2000] + f"\n\n[... truncated, {len(v)} total chars]"
+                d[k] = v
+        return d
+
+    return app.response_class(
+        json.dumps({
+            "run": safe_dict(run),
+            "phases": [safe_dict(p) for p in phases],
+            "subagents": [safe_dict(s) for s in subagents]
+        }, ensure_ascii=False),
+        mimetype='application/json'
+    )
 
 
 @app.route("/api/research/runs/<run_id>", methods=["DELETE"])
