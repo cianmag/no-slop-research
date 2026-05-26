@@ -116,7 +116,7 @@ Or add keys through the dashboard (recommended — see below).
 If you have Hermes Agent installed, the skill is automatically available:
 
 ```
-/no-slop-research What is the state of quantum computing in 2025?
+/no-slop-research What is the state of quantum computing in 2026?
 ```
 
 Hermes will orchestrate the full pipeline using delegate_task for parallel subagent execution.
@@ -127,7 +127,7 @@ Hermes will orchestrate the full pipeline using delegate_task for parallel subag
 from agent.orchestrator import ResearchPipeline
 
 pipeline = ResearchPipeline(
-    topic="What is the state of quantum computing in 2025?",
+    topic="What is the state of quantum computing in 2026?",
     config={"max_rounds": 3}
 )
 
@@ -191,7 +191,7 @@ The dashboard starts on **http://localhost:5060**
 
 #### API Keys Tab
 - Add keys for any supported provider:
-  - **OpenAI** (GPT-4o, GPT-4 Turbo)
+  - **OpenAI** (GPT-5.5, GPT-5,etc)
   - **OpenRouter** (Claude, Gemini, Llama, etc.)
   - **Anthropic** (Claude 3.5 Sonnet, Haiku)
   - **Groq** (Llama 3.1, Mixtral)
@@ -277,7 +277,7 @@ LLM_MODEL_NAME=llama-3.1-70b-versatile
 
 | Provider | Base URL | Key Prefix | Best Models |
 |----------|----------|------------|-------------|
-| OpenAI | `https://api.openai.com/v1` | `sk-` | gpt-4o, gpt-4o-mini |
+| OpenAI | `https://api.openai.com/v1` | `sk-` | gpt-5.5, gpt-5-mini |
 | OpenRouter | `https://openrouter.ai/api/v1` | `sk-or-` | Any model via routing |
 | Anthropic | `https://api.anthropic.com/v1` | `sk-ant-` | claude-sonnet-4 |
 | Groq | `https://api.groq.com/openai/v1` | `gsk_` | llama-3.1-70b |
