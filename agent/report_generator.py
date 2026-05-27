@@ -1,27 +1,62 @@
 """
 Phase 5: Report Generator — Compiles the validated research into a clean
 final report with executive summary, findings, confidence ratings, and sources.
+
+UPDATED: Now makes direct LLM API calls.
 """
 
+from .llm_client import LLMClient
 
-def _build_report_prompt(topic: str, profile: str, history: list,
-                         validation_result: str, challenge_result: str,
-                         total_rounds: int) -> str:
-    """Build the prompt for final report generation."""
-    history_text = ""
-    for h in history:
-        history_text += f"\n### Round {h['round']}\n"
-        history_text += f"- Improvements found: {h['improvement_count']}\n"
-        if h.get('improvement_points'):
-            for p in h['improvement_points'][:5]:
-                history_text += f"  - {p}\n"
-        history_text += f"- Validation: {h.get('validation_summary', 'N/A')[:200]}\n"
-        history_text += f"- Challenge: {h.get('challenge_summary', 'N/A')[:200]}\n"
 
-    return f"""You are a RESEARCH REPORT WRITER. Your job is to take a validated Research Profile
-and compile it into a professional, publication-ready final report.
+class ReportGenerator:
+    """Generates the final research report."""
 
-TOPIC: {topic}
+    def generate(self, topic: str, profile: str, history: list,
+                 validation_result: str, challenge_result: str,
+                 total_rounds: int, llm_client: LLMClient = None) -> str:
+        """
+        Generate the final report from validated research.
+
+        Args:
+            topic: Research topic
+            profile: Final validated research profile
+            history: List of round history dicts
+            validation_result: Latest validation output
+            challenge_result: Latest challenge output
+            total_rounds: Number of adversarial rounds completed
+            llm_client: LLM client for API calls
+
+        Returns:
+            Final report text
+        """
+        if llm_client:
+            return self._generate_with_llm(topic, profile, history,
+                                            validation_result, challenge_result,
+                                            total_rounds, llm_client)
+        else:
+            return self._generate_fallback(topic, profile, history, total_rounds)
+
+    def _generate_with_llm(self, topic: str, profile: str, history: list,
+                            validation: str, challenge: str,
+                            total_rounds: int, llm_client: LLMClient) -> str:
+        """Use LLM to generate the final report."""
+        history_text = ""
+        for h in history:
+            history_text += f"\n### Round {h['round']}\n"
+            history_text += f"- Improvements found: {h['improvement_count']}\n"
+            if h.get('improvement_points'):
+                for p in h['improvement_points'][:5]:
+                    history_text += f"  - {p}\n"
+            history_text += f"- Validation: {h.get('validation_summary', 'N/A')[:200]}\n"
+            history_text += f"- Challenge: {h.get('challenge_summary', 'N/A')[:200]}\n"
+
+        system = (
+            "You are a RESEARCH REPORT WRITER. Your job is to take a validated "
+            "Research Profile and compile it into a professional, publication-ready "
+            "final report. Be clear, accessible, and honest about limitations."
+        )
+
+        user_msg = f"""TOPIC: {topic}
 ADVERSARIAL ROUNDS COMPLETED: {total_rounds}
 
 VALIDATED RESEARCH PROFILE:
@@ -31,10 +66,10 @@ ADVERSARIAL HISTORY:
 {history_text}
 
 LATEST VALIDATION:
-{validation_result[:3000]}
+{validation[:3000]}
 
 LATEST CHALLENGE:
-{challenge_result[:3000]}
+{challenge[:3000]}
 
 YOUR MISSION:
 Create a polished final report that:
@@ -55,23 +90,18 @@ OUTPUT FORMAT:
 
 ### Finding 1: [Title]
 - **What we found:** [clear statement]
-- **Evidence strength:** [Strong/Moderate/Weak] ★★★★☆
+- **Evidence strength:** [Strong/Moderate/Weak]
 - **Sources:** [key sources]
 - **Adversarial testing:** [how this survived validation/challenge]
 
 ### Finding 2: [Title]
 [repeat format]
 
-[Continue for all significant findings]
-
 ## Data & Statistics
 Key numbers and metrics with sources.
 
 ## What Changed Through Adversarial Testing
-Brief summary of how the research evolved:
-- Round 1: What was challenged and how it was addressed
-- Round 2: [if applicable]
-- Round 3: [if applicable]
+Brief summary of how the research evolved through each round.
 
 ## Remaining Uncertainties
 Honest assessment of what we still don't know or can't verify.
@@ -81,54 +111,60 @@ Complete bibliography with URLs.
 
 ## Methodology Note
 Brief description of the adversarial research process used.
+- Number of research agents: {len(history)}
+- Adversarial rounds: {total_rounds}
+- Each round: Team A (validators) vs Team B (challengers)
+- Research survived adversarial scrutiny before final report
 
 ---
 *This report survived {total_rounds} rounds of adversarial interrogation.
 Generated by No-Slop Research.*"""
 
-
-class ReportGenerator:
-    """Generates the final research report."""
-
-    def generate(self, topic: str, profile: str, history: list,
-                 validation_result: str, challenge_result: str,
-                 total_rounds: int) -> str:
-        """
-        Generate the final report from validated research.
-        Returns formatted report.
-        """
-        prompt = _build_report_prompt(
-            topic=topic,
-            profile=profile,
-            history=history,
-            validation_result=validation_result,
-            challenge_result=challenge_result,
-            total_rounds=total_rounds
+        result = llm_client.chat(
+            messages=[{"role": "user", "content": user_msg}],
+            system=system,
+            temperature=0.3,
+            max_tokens=6000
         )
 
-        # The Hermes skill executes this as a subagent
-        # In standalone mode, return the prompt
-        return prompt
+        if result["success"]:
+            return result["content"]
+        else:
+            return self._generate_fallback(topic, profile, history, total_rounds)
 
-    def generate_markdown(self, topic: str, profile: str, history: list,
-                         validation_result: str, challenge_result: str,
-                         total_rounds: int) -> str:
-        """
-        Generate report and format as clean markdown.
-        When called from Hermes with subagent results, pass the result here.
-        """
-        report = self.generate(topic, profile, history, validation_result,
-                              challenge_result, total_rounds)
-        return report
+    def _generate_fallback(self, topic: str, profile: str,
+                            history: list, total_rounds: int) -> str:
+        """Fallback report without LLM."""
+        history_summary = ""
+        for h in history:
+            history_summary += f"- Round {h['round']}: {h['improvement_count']} improvements found\n"
+
+        return f"""# Final Research Report: {topic}
+
+## Executive Summary
+This report was compiled from research that went through {total_rounds} adversarial rounds.
+No LLM client was configured for final report generation — showing raw validated profile.
+
+## Research Profile
+{profile[:8000]}
+
+## Adversarial History
+{history_summary}
+
+## Methodology Note
+- Adversarial rounds: {total_rounds}
+- Team A (validators) vs Team B (challengers) per round
+- No LLM configured — raw output shown
+
+---
+*Generated by No-Slop Research*
+"""
 
     def extract_findings_summary(self, report: str) -> dict:
-        """
-        Extract a structured summary of findings from the final report.
-        """
+        """Extract a structured summary of findings from the final report."""
         import re
         findings = []
 
-        # Find all "### Finding N:" sections
         finding_pattern = r'### Finding \d+:\s*(.+?)(?=### Finding|\n## |\Z)'
         matches = re.findall(finding_pattern, report, re.DOTALL)
 

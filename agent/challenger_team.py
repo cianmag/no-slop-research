@@ -2,18 +2,43 @@
 Phase 3b: Challenger Team (Team B) — Takes the research profile and actively
 tries to BREAK it. Looks for missing perspectives, biased framing,
 cherry-picked data, contradicting evidence, logical gaps, and unstated assumptions.
+
+UPDATED: Now makes direct LLM API calls + noise filtering on output.
 """
 
 import re
+from .llm_client import LLMClient
+from .noise_filter import filter_improvement_points, severity_score
 
 
-def _build_challenge_prompt(topic: str, profile: str, round_num: int) -> str:
-    """Build the prompt for the challenger team."""
-    return f"""You are a CHALLENGER — a professional skeptic and devil's advocate.
-Your job is to take a Research Profile and try to DESTROY it.
-Find every flaw, gap, bias, and weakness. Be ruthless but constructive.
+class ChallengerTeam:
+    """Team B — challenges research findings and identifies flaws."""
 
-TOPIC: {topic}
+    def __init__(self, config: dict = None):
+        self.config = config or {}
+
+    def challenge(self, topic: str, profile: str, round_num: int,
+                  llm_client: LLMClient = None) -> str:
+        """
+        Run adversarial challenge on a research profile.
+        Returns challenge analysis text.
+        """
+        if llm_client:
+            return self._challenge_with_llm(topic, profile, round_num, llm_client)
+        else:
+            return self._challenge_fallback(topic, profile, round_num)
+
+    def _challenge_with_llm(self, topic: str, profile: str, round_num: int,
+                             llm_client: LLMClient) -> str:
+        """Use LLM to challenge the research profile."""
+        system = (
+            "You are a CHALLENGER — a professional skeptic and devil's advocate. "
+            "Your job is to take a Research Profile and try to DESTROY it. "
+            "Find every flaw, gap, bias, and weakness. Be ruthless but constructive. "
+            "Every improvement point you suggest must be SPECIFIC and ACTIONABLE."
+        )
+
+        user_msg = f"""TOPIC: {topic}
 CHALLENGE ROUND: {round_num}
 
 RESEARCH PROFILE:
@@ -71,36 +96,63 @@ Format each improvement point as:
 [IMPROVE-2] <description>
 ...
 
+IMPORTANT: Every improvement point must be SPECIFIC and ACTIONABLE.
+Bad: "More research is needed" (too vague — this is noise)
+Good: "Add Q3 2024 revenue data from SEC filings for Company X to support the growth claim"
+
 ## CHALLENGE VERDICT
 What's the single biggest vulnerability in this research?
 What would make this 10x stronger?
 
 Be brutal. Be specific. Be constructive. Your goal is to make this research UNBREAKABLE."""
 
+        result = llm_client.chat(
+            messages=[{"role": "user", "content": user_msg}],
+            system=system,
+            temperature=0.4,
+            max_tokens=4096
+        )
 
-class ChallengerTeam:
-    """Team B — challenges research findings and identifies flaws."""
+        if result["success"]:
+            return result["content"]
+        else:
+            return self._challenge_fallback(topic, profile, round_num)
 
-    def __init__(self, config: dict = None):
-        self.config = config or {}
+    def _challenge_fallback(self, topic: str, profile: str,
+                             round_num: int) -> str:
+        """Fallback challenge without LLM."""
+        return f"""## CHALLENGE SUMMARY
+No LLM client configured — cannot perform automated adversarial challenge.
+Rate: UNKNOWN
 
-    def challenge(self, topic: str, profile: str, round_num: int) -> str:
-        """
-        Run adversarial challenge on a research profile.
-        Returns challenge analysis.
-        """
-        prompt = _build_challenge_prompt(topic, profile, round_num)
+## IMPROVEMENT POINTS
+[IMPROVE-1] Configure an LLM API key in the dashboard to enable adversarial challenge
 
-        # The Hermes skill executes this as a subagent
-        # In standalone mode, return the prompt
-        return prompt
+## CHALLENGE VERDICT
+The research cannot be validated without an LLM to interrogate it.
+Round: {round_num}
+"""
 
-    def extract_improvement_points(self, challenge_result: str) -> list:
+    def extract_improvement_points(self, challenge_result: str,
+                                    filter_noise: bool = True) -> list:
         """
         Extract numbered improvement points from the challenge result.
+        With noise filtering enabled (default), removes vague/duplicate points.
+
         Returns list of improvement point strings.
         """
+        raw_points = self._extract_raw_points(challenge_result)
+
+        if filter_noise and raw_points:
+            filtered = filter_improvement_points(raw_points, topic="")
+            return filtered["filtered_points"]
+
+        return raw_points
+
+    def _extract_raw_points(self, challenge_result: str) -> list:
+        """Extract raw improvement points from text."""
         points = []
+
         # Look for [IMPROVE-N] pattern
         pattern = r'\[IMPROVE-\d+\]\s*(.+?)(?=\[IMPROVE-|\Z)'
         matches = re.findall(pattern, challenge_result, re.DOTALL)
@@ -120,21 +172,19 @@ class ChallengerTeam:
                 continue
             if in_improvements:
                 line_stripped = line.strip()
-                if line_stripped and (line_stripped[0].isdigit() or line_stripped.startswith("-") or line_stripped.startswith("*")):
-                    # Clean up the point
-                    point = line_stripped.lstrip("0123456789.-*) ").strip()
+                if line_stripped and (line_stripped[0].isdigit() or
+                                       line_stripped.startswith("-") or
+                                       line_stripped.startswith("*")):
+                    point = line_stripped.lstrip("0123456789.-*) \t").strip()
                     if point and len(point) > 10:
                         points.append(point)
                 elif line_stripped.startswith("##") and points:
-                    break  # Next section
+                    break
 
         return points
 
     def assess_vulnerability(self, challenge_result: str) -> str:
-        """
-        Extract the overall vulnerability assessment.
-        Returns: bulletproof, minor_gaps, significant_flaws, or critically_weak
-        """
+        """Extract the overall vulnerability assessment."""
         result_lower = challenge_result.lower()
         if "bulletproof" in result_lower:
             return "bulletproof"

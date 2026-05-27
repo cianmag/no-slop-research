@@ -2,22 +2,47 @@
 Phase 3a: Validator Team (Team A) — Takes the research profile and argues
 WHY the findings are correct. Cross-references claims with sources,
 identifies strong evidence chains, and rates confidence levels.
+
+UPDATED: Now makes direct LLM API calls.
 """
 
+from .llm_client import LLMClient
 
-def _build_validation_prompt(topic: str, profile: str, round_num: int) -> str:
-    """Build the prompt for the validator team."""
-    return f"""You are a VALIDATOR — a rigorous fact-checker and evidence analyst.
-Your job is to take a Research Profile and determine how VALID and RELIABLE its findings are.
 
-TOPIC: {topic}
+class ValidatorTeam:
+    """Team A — validates research findings and rates confidence."""
+
+    def __init__(self, config: dict = None):
+        self.config = config or {}
+
+    def validate(self, topic: str, profile: str, round_num: int,
+                 llm_client: LLMClient = None) -> str:
+        """
+        Run validation on a research profile.
+        Returns validation analysis text.
+        """
+        if llm_client:
+            return self._validate_with_llm(topic, profile, round_num, llm_client)
+        else:
+            return self._validate_fallback(topic, profile, round_num)
+
+    def _validate_with_llm(self, topic: str, profile: str, round_num: int,
+                            llm_client: LLMClient) -> str:
+        """Use LLM to validate the research profile."""
+        system = (
+            "You are a VALIDATOR — a rigorous fact-checker and evidence analyst. "
+            "Your job is to assess how VALID and RELIABLE research findings are. "
+            "Be RIGOROUS but FAIR. Do not rubber-stamp claims."
+        )
+
+        user_msg = f"""TOPIC: {topic}
 VALIDATION ROUND: {round_num}
 
 RESEARCH PROFILE:
 {profile[:12000]}
 
 YOUR MISSION:
-Analyze every claim in this profile and assess its validity. Be RIGOROUS but FAIR.
+Analyze every claim in this profile and assess its validity.
 
 For each key finding, evaluate:
 1. SOURCE QUALITY — Are the sources credible? Primary or secondary? Biased?
@@ -52,60 +77,28 @@ If not, what specific improvements are needed?
 
 Be honest. Your job is truth, not comfort."""
 
+        result = llm_client.chat(
+            messages=[{"role": "user", "content": user_msg}],
+            system=system,
+            temperature=0.2,
+            max_tokens=4096
+        )
 
-class ValidatorTeam:
-    """Team A — validates research findings and rates confidence."""
-
-    def __init__(self, config: dict = None):
-        self.config = config or {}
-
-    def validate(self, topic: str, profile: str, round_num: int) -> str:
-        """
-        Run validation on a research profile.
-        Returns validation analysis.
-        """
-        prompt = _build_validation_prompt(topic, profile, round_num)
-
-        # The Hermes skill executes this as a subagent
-        # In standalone mode, return the prompt
-        return prompt
-
-    def extract_confidence_score(self, validation_result: str) -> float:
-        """
-        Extract an overall confidence score from the validation result.
-        Returns 0.0 - 1.0
-        """
-        result_lower = validation_result.lower()
-
-        if "high confidence" in result_lower:
-            return 0.85
-        elif "moderate confidence" in result_lower:
-            return 0.6
-        elif "low confidence" in result_lower:
-            return 0.35
+        if result["success"]:
+            return result["content"]
         else:
-            return 0.5
+            return self._validate_fallback(topic, profile, round_num)
 
-    def get_claim_scores(self, validation_result: str) -> list:
-        """
-        Parse individual claim confidence ratings from validation output.
-        Returns list of dicts with claim and score.
-        """
-        claims = []
-        lines = validation_result.split("\n")
-        current_claim = None
+    def _validate_fallback(self, topic: str, profile: str,
+                            round_num: int) -> str:
+        """Fallback validation without LLM."""
+        return f"""## VALIDATION SUMMARY
+No LLM client configured — cannot perform automated validation.
 
-        for line in lines:
-            line_lower = line.lower().strip()
-            if "**claim:**" in line_lower or "claim:" in line_lower:
-                current_claim = line.split(":", 1)[-1].strip().strip("*").strip()
-            elif "confidence rating" in line_lower and current_claim:
-                # Try to extract percentage
-                import re
-                pct_match = re.search(r'(\d+)%', line)
-                if pct_match:
-                    score = int(pct_match.group(1)) / 100.0
-                    claims.append({"claim": current_claim, "score": score})
-                current_claim = None
+## CLAIM-BY-CLAIM ANALYSIS
+[Validation requires an LLM API key to cross-reference claims with sources]
 
-        return claims
+## VALIDATION VERDICT
+Configure an API key in the dashboard to enable automated validation.
+Round: {round_num}
+"""

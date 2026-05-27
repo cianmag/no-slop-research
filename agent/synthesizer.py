@@ -1,29 +1,66 @@
 """
 Phase 4: Synthesizer — Merges improvement points from the Challenger Team
 back into the research profile, triggering targeted re-research to address weaknesses.
+
+UPDATED: Now makes direct LLM API calls.
 """
 
+from .llm_client import LLMClient
 
-def _build_synthesis_prompt(topic: str, profile: str, improvement_points: list,
-                            validation_result: str, challenge_result: str,
-                            round_num: int) -> str:
-    """Build the prompt for synthesis."""
-    improvements_text = "\n".join(f"  {i+1}. {p}" for i, p in enumerate(improvement_points))
 
-    return f"""You are a RESEARCH SYNTHESIZER. Your job is to take a Research Profile,
-the adversarial challenge results, and merge improvements back into a stronger profile.
+class Synthesizer:
+    """Merges improvement points back into the research profile."""
 
-TOPIC: {topic}
+    def merge(self, topic: str, original_profile: str, improvement_points: list,
+              validation_result: str, challenge_result: str, round_num: int,
+              llm_client: LLMClient = None) -> str:
+        """
+        Merge improvement points into the profile.
+
+        Args:
+            topic: Research topic
+            original_profile: Current research profile
+            improvement_points: List of improvement point strings from Team B
+            validation_result: Team A's validation output
+            challenge_result: Team B's challenge output
+            round_num: Current adversarial round
+            llm_client: LLM client for API calls
+
+        Returns:
+            Updated Research Profile text
+        """
+        if llm_client:
+            return self._merge_with_llm(topic, original_profile,
+                                         improvement_points, validation_result,
+                                         challenge_result, round_num, llm_client)
+        else:
+            return self._merge_fallback(topic, original_profile,
+                                         improvement_points, round_num)
+
+    def _merge_with_llm(self, topic: str, profile: str, improvements: list,
+                         validation: str, challenge: str, round_num: int,
+                         llm_client: LLMClient) -> str:
+        """Use LLM to merge improvements into the profile."""
+        improvements_text = "\n".join(f"  {i+1}. {p}" for i, p in enumerate(improvements))
+
+        system = (
+            "You are a RESEARCH SYNTHESIZER. Your job is to take a Research Profile, "
+            "the adversarial challenge results, and merge improvements back into a "
+            "stronger profile. Preserve strong findings; fix or weaken claims that "
+            "were successfully challenged."
+        )
+
+        user_msg = f"""TOPIC: {topic}
 SYNTHESIS ROUND: {round_num}
 
 CURRENT RESEARCH PROFILE:
 {profile[:10000]}
 
 VALIDATOR TEAM (Team A) FINDINGS:
-{validation_result[:4000]}
+{validation[:4000]}
 
 CHALLENGER TEAM (Team B) ATTACK:
-{challenge_result[:4000]}
+{challenge[:4000]}
 
 IMPROVEMENT POINTS TO ADDRESS:
 {improvements_text}
@@ -54,51 +91,50 @@ Return the COMPLETE updated Research Profile in the same structure as the origin
 - Confidence Assessment (updated)
 
 Mark any NEW research areas with [NEEDS-RESEARCH] tags so they can be
-investigated in the next round if needed.
+investigated in the next round if needed."""
 
-Be thorough. This is the iterative improvement that makes research bulletproof."""
-
-
-class Synthesizer:
-    """Merges improvement points back into the research profile."""
-
-    def merge(self, topic: str, original_profile: str, improvement_points: list,
-              validation_result: str, challenge_result: str, round_num: int) -> str:
-        """
-        Merge improvement points into the profile.
-        Returns updated Research Profile.
-        """
-        prompt = _build_synthesis_prompt(
-            topic=topic,
-            profile=original_profile,
-            improvement_points=improvement_points,
-            validation_result=validation_result,
-            challenge_result=challenge_result,
-            round_num=round_num
+        result = llm_client.chat(
+            messages=[{"role": "user", "content": user_msg}],
+            system=system,
+            temperature=0.3,
+            max_tokens=6000
         )
 
-        # The Hermes skill executes this as a subagent
-        # In standalone mode, return the prompt
-        return prompt
+        if result["success"]:
+            return result["content"]
+        else:
+            return self._merge_fallback(topic, profile, improvements, round_num)
+
+    def _merge_fallback(self, topic: str, profile: str, improvements: list,
+                         round_num: int) -> str:
+        """Fallback merge without LLM."""
+        improvements_text = "\n".join(f"- {p}" for p in improvements)
+        return f"""{profile}
+
+---
+
+## ADVERSARIAL ROUND {round_num} — IMPROVEMENT POINTS
+The following improvement points were identified but NOT addressed
+(no LLM client configured for synthesis):
+
+{improvements_text}
+
+[NEEDS-RESEARCH] Configure an API key to enable automatic synthesis.
+"""
 
     def extract_needs_research(self, synthesized_profile: str) -> list:
-        """
-        Extract items tagged with [NEEDS-RESEARCH] for potential re-research.
-        """
+        """Extract items tagged with [NEEDS-RESEARCH]."""
         import re
         pattern = r'\[NEEDS-RESEARCH\]\s*(.+?)(?=\n|$)'
         return re.findall(pattern, synthesized_profile)
 
-    def calculate_improvement_delta(self, original_profile: str, updated_profile: str) -> dict:
-        """
-        Calculate how much the profile changed between rounds.
-        Returns metrics on improvement.
-        """
+    def calculate_improvement_delta(self, original_profile: str,
+                                     updated_profile: str) -> dict:
+        """Calculate how much the profile changed between rounds."""
+        import re
         original_len = len(original_profile)
         updated_len = len(updated_profile)
 
-        # Count confidence mentions
-        import re
         original_high = len(re.findall(r'high confidence', original_profile.lower()))
         updated_high = len(re.findall(r'high confidence', updated_profile.lower()))
 
@@ -109,5 +145,5 @@ class Synthesizer:
             "size_change": updated_len - original_len,
             "size_pct": round((updated_len - original_len) / max(original_len, 1) * 100, 1),
             "high_confidence_change": updated_high - original_high,
-            "low_confidence_change": original_low - updated_low,  # Positive = improvement
+            "low_confidence_change": original_low - updated_low,
         }
