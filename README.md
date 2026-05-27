@@ -72,7 +72,7 @@ User Topic
 ## Architecture
 
 ### Direct LLM Calls
-Every agent (research, profile builder, validator, challenger, synthesizer, report generator) makes **direct API calls** to any OpenAI-compatible endpoint. No external agent framework dependency.
+Every agent makes **direct API calls** to any OpenAI-compatible endpoint. No external agent framework dependency.
 
 ### Supported LLM Providers
 - OpenAI (GPT-4o, GPT-4o-mini, etc.)
@@ -82,14 +82,13 @@ Every agent (research, profile builder, validator, challenger, synthesizer, repo
 - Any OpenAI-compatible endpoint (custom)
 
 ### Web Search
-Uses [duckduckgo-search](https://github.com/deedy5/duckduckgo_search) for web research — no API key required.
+Uses [duckduckgo-search](https://github.com/deedy5/duckduckgo_search) — no API key required.
 
 ### Noise Filtering
 Team B's improvement points are automatically filtered for:
 - Generic noise ("more research is needed")
 - Vague/non-actionable suggestions
 - Duplicate points (similarity detection)
-- Minimum substance requirements
 
 ### Confidence Scoring
 Evidence-based scoring using weighted composite:
@@ -106,7 +105,7 @@ Every LLM call is tracked with token counts and estimated cost per run.
 ### 1. Install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/no-slop-research.git
+git clone https://github.com/cianmag/no-slop-research.git
 cd no-slop-research
 pip install -r requirements.txt
 ```
@@ -115,8 +114,8 @@ pip install -r requirements.txt
 
 Option A: Environment variables
 ```bash
-export LLM_API_KEY="your-api-key"
-export LLM_BASE_URL="https://api.openai.com/v1"  # or any OpenAI-compatible
+export LLM_API_KEY="your-key-here"
+export LLM_BASE_URL="https://api.openai.com/v1"
 export LLM_MODEL_NAME="gpt-4o-mini"
 ```
 
@@ -137,7 +136,7 @@ cp .env.example .env
 Via the dashboard:
 ```bash
 python -m dashboard.app
-# Open http://localhost:5060 → Research tab → Enter topic
+# http://localhost:5060 → Research tab → Enter topic
 ```
 
 Via Python:
@@ -163,10 +162,10 @@ python -m dashboard.app
 ```
 
 Features:
-- **Research tab** — Start new adversarial research from the UI
-- **Active tab** — Monitor running pipelines in real-time
-- **History tab** — View all completed research runs
-- **API Keys tab** — Manage keys for 7 providers (OpenAI, OpenRouter, Anthropic, Groq, Together, DeepSeek, Custom)
+- **Research tab** — Start new adversarial research
+- **Active tab** — Monitor running pipelines
+- **History tab** — View completed runs
+- **API Keys tab** — Manage keys for 7 providers
 - **Settings tab** — Configure pipeline defaults
 
 ## File Structure
@@ -177,9 +176,8 @@ no-slop-research/
 ├── requirements.txt
 ├── .env.example
 ├── agent/
-│   ├── __init__.py
 │   ├── orchestrator.py          # Main pipeline controller
-│   ├── llm_client.py            # Direct LLM API client (requests-based)
+│   ├── llm_client.py            # Direct LLM API client
 │   ├── web_search.py            # DuckDuckGo web search
 │   ├── research_phase.py        # Web research + LLM synthesis
 │   ├── profile_builder.py       # Synthesizes research into profile
@@ -199,8 +197,6 @@ no-slop-research/
 
 ## Cost Estimation
 
-Approximate cost per run (varies by topic complexity):
-
 | Model | 1 Round | 2 Rounds | 3 Rounds |
 |-------|---------|----------|----------|
 | GPT-4o-mini | ~$0.05 | ~$0.10 | ~$0.15 |
@@ -208,14 +204,12 @@ Approximate cost per run (varies by topic complexity):
 | Claude Sonnet | ~$0.40 | ~$0.80 | ~$1.20 |
 | Llama 3.1 70B (Groq) | ~$0.03 | ~$0.06 | ~$0.09 |
 
-Each round uses ~4-6 LLM calls (research agents + profile + validator + challenger + synthesizer).
-
 ## Limitations
 
-- **Web search quality depends on DuckDuckGo** — rate limits may apply
+- **Web search depends on DuckDuckGo** — rate limits may apply
 - **LLM quality affects output** — garbage in, garbage out
 - **Cost scales with rounds** — complex topics may need 3 rounds
-- **Not real-time** — a full run takes 2-10 minutes depending on model speed
+- **Not real-time** — a full run takes 2-10 minutes
 - **Confidence scores are estimates** — not statistical confidence intervals
 
 ## License
