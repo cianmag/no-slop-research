@@ -1,3 +1,5 @@
+
+
 # No-Slop Research
 
 An adversarial research agent that eliminates LLM bias, incomplete research, and unverified claims through multi-phase interrogation with Team A (validators) vs Team B (challengers).
@@ -158,7 +160,7 @@ print(f"Cost: ${result['cost']['total_cost_usd']:.4f}")
 
 ```bash
 python -m dashboard.app
-# http://localhost:5060
+# http://localhost:5060 (port configurable via DASHBOARD_PORT env var)
 ```
 
 Features:
