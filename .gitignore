@@ -43,3 +43,6 @@ logs/
 *.pem
 *.key
 secrets/
+
+# WAL sidecar
+*.db-shm
