@@ -12,6 +12,7 @@ import json
 import sqlite3
 import hashlib
 import secrets
+import threading
 from datetime import datetime, timezone
 from functools import wraps
 
@@ -22,6 +23,7 @@ from flask import (Flask, render_template, request, jsonify, redirect,
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agent.orchestrator import ResearchPipeline, get_db, DB_PATH
+from agent.llm_client import create_client_from_env
 
 app = Flask(__name__,
             template_folder=os.path.join(os.path.dirname(__file__), "templates"),
@@ -226,6 +228,14 @@ def start_research():
     conn = get_conn()
     active_key = conn.execute("SELECT * FROM api_keys WHERE is_active = 1 ORDER BY created_at DESC LIMIT 1").fetchone()
 
+    # Fail fast with an actionable message instead of launching a doomed run
+    if not active_key and not create_client_from_env():
+        return jsonify({
+            "error": "No LLM API key configured. Add one in the API Keys tab, "
+                     "or set LLM_API_KEY (plus LLM_BASE_URL / LLM_MODEL_NAME) "
+                     "in the environment or .env file."
+        }), 400
+
     if active_key:
         config["api_key"] = active_key["key_value"]
         config["base_url"] = active_key["base_url"]
@@ -236,25 +246,30 @@ def start_research():
     pipeline = ResearchPipeline(topic=topic, config=config)
     run_id = pipeline.run_id
 
-    # Queue it
+    # Create the run row now so the UI can track it while the thread spins up
     now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        "INSERT INTO research_runs (id, topic, status, current_phase, max_rounds, created_at, updated_at, config) VALUES (?, ?, 'running', 'starting', ?, ?, ?, ?)",
+        (run_id, topic, max_rounds, now, now, json.dumps(config))
+    )
     conn.execute(
         "INSERT INTO research_queue (topic, config, status, run_id, created_at) VALUES (?, ?, 'running', ?, ?)",
         (topic, json.dumps(config), run_id, now)
     )
     conn.commit()
 
-    # Run pipeline (synchronous for now — could be async with Celery/threading)
-    try:
+    # Run the pipeline in the background so the dashboard stays responsive
+    # and the Active tab can poll live progress while it runs.
+    def _run_pipeline():
         result = pipeline.run()
-        # Update queue
-        conn.execute("UPDATE research_queue SET status = 'completed' WHERE run_id = ?", (run_id,))
-        conn.commit()
-        return jsonify({"success": True, "run_id": run_id, "result": result})
-    except Exception as e:
-        conn.execute("UPDATE research_queue SET status = 'error' WHERE run_id = ?", (run_id,))
-        conn.commit()
-        return jsonify({"success": False, "error": str(e)}), 500
+        db = get_db()
+        db.execute("UPDATE research_queue SET status = ? WHERE run_id = ?",
+                   ("completed" if result.get("success") else "error", run_id))
+        db.commit()
+        db.close()
+
+    threading.Thread(target=_run_pipeline, daemon=True).start()
+    return jsonify({"success": True, "run_id": run_id})
 
 
 @app.route("/api/research/runs", methods=["GET"])
@@ -353,4 +368,4 @@ if __name__ == "__main__":
     print(f"\n  No-Slop Research Dashboard")
     print(f"  Running on http://{host}:{port}")
     print(f"  Database: {DB_PATH}\n")
-    app.run(host=host, port=port, debug=True)
+    app.run(host=host, port=port, debug=True, threaded=True)
