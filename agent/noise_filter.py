@@ -47,7 +47,7 @@ def filter_improvement_points(points: list, topic: str,
         # Check 1: Too short / empty
         if len(point) < min_length:
             removed.append(point)
-            removed_reasons[point[:50]] = "Too short (< {min_length} chars)"
+            removed_reasons[point[:50]] = f"Too short (< {min_length} chars)"
             continue
 
         # Check 2: Generic / vague noise
