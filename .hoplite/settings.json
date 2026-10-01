@@ -1,26 +1,11 @@
 {
-	"version": 1,
-	"ports": {
-		"preview": 3000,
-		"additional": {}
-	},
-	"scripts": {
-		"setup": {
-			"enabled": true,
-			"command": "python3 -m pip install --break-system-packages -q -r requirements.txt"
-		},
-		"run": {
-			"enabled": true,
-			"command": null
-		},
-		"archive": {
-			"enabled": true,
-			"command": null
-		},
-		"check": {
-			"enabled": true,
-			"command": "python3 -m unittest discover -q"
-		}
-	},
-	"mcpServers": []
+  "version": 1,
+  "ports": {"preview": 5060, "additional": {}},
+  "scripts": {
+    "setup": {"enabled": true, "command": "python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"},
+    "run": {"enabled": true, "command": ".venv/bin/python -m dashboard.app"},
+    "archive": {"enabled": true, "command": null},
+    "check": {"enabled": true, "command": ".venv/bin/python -m unittest discover -q"}
+  },
+  "mcpServers": []
 }

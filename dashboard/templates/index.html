@@ -528,11 +528,11 @@
         <span class="version">v1.0</span>
     </div>
     <nav class="header-nav">
-        <button class="active" onclick="switchTab('research')">🔬 Research</button>
-        <button onclick="switchTab('active')">⚡ Active</button>
-        <button onclick="switchTab('history')">📋 History</button>
-        <button onclick="switchTab('keys')">🔑 API Keys</button>
-        <button onclick="switchTab('settings')">⚙️ Settings</button>
+        <button data-tab="research" class="active" onclick="switchTab('research')">🔬 Research</button>
+        <button data-tab="active" onclick="switchTab('active')">⚡ Active</button>
+        <button data-tab="history" onclick="switchTab('history')">📋 History</button>
+        <button data-tab="keys" onclick="switchTab('keys')">🔑 API Keys</button>
+        <button data-tab="settings" onclick="switchTab('settings')">⚙️ Settings</button>
     </nav>
 </header>
 
@@ -845,14 +845,15 @@ function hideLoading() {
 function switchTab(tab) {
     document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('.header-nav button').forEach(el => el.classList.remove('active'));
+    document.querySelector(`.header-nav button[data-tab="${tab}"]`)?.classList.add('active');
     document.getElementById(`tab-${tab}`).classList.add('active');
-    event.target.classList.add('active');
 
     // Load data for tab
     if (tab === 'history') loadRuns();
     if (tab === 'keys') { loadKeys(); loadProviders(); }
     if (tab === 'settings') loadSettings();
-    if (tab === 'active') loadActivePipelines();
+    if (tab === 'active') { loadActivePipelines(); startActivePolling(); }
+    else stopActivePolling();
     if (tab === 'research') { loadRuns(); loadStats(); }
 }
 
@@ -869,9 +870,9 @@ async function startResearch() {
         format: document.getElementById('research-format').value,
     };
 
-    showLoading('Starting adversarial research...', `Topic: ${topic.substring(0, 80)}...`);
-    document.getElementById('btn-start-research').disabled = true;
-    document.getElementById('research-status').textContent = 'Running...';
+    const btn = document.getElementById('btn-start-research');
+    btn.disabled = true;
+    document.getElementById('research-status').textContent = 'Starting...';
 
     try {
         const result = await api('/api/research/start', {
@@ -879,23 +880,21 @@ async function startResearch() {
             body: JSON.stringify({ topic, config })
         });
 
-        hideLoading();
-        document.getElementById('btn-start-research').disabled = false;
-
         if (result.success) {
-            toast(`Research complete! ${result.result?.rounds || 0} adversarial rounds.`, 'success');
-            document.getElementById('research-status').textContent = `✓ Complete (${result.run_id})`;
+            toast(`Research started (${result.run_id}) — tracking it in the Active tab`, 'success');
+            document.getElementById('research-status').textContent = `✓ Started (${result.run_id})`;
             loadRuns();
             loadStats();
+            switchTab('active');
         } else {
-            toast(`Error: ${result.error}`, 'error');
+            toast(result.error || 'Failed to start research', 'error');
             document.getElementById('research-status').textContent = 'Error';
         }
     } catch (e) {
-        hideLoading();
-        document.getElementById('btn-start-research').disabled = false;
         toast(`Network error: ${e.message}`, 'error');
         document.getElementById('research-status').textContent = 'Error';
+    } finally {
+        btn.disabled = false;
     }
 }
 
@@ -931,7 +930,7 @@ async function loadRuns() {
             <div style="padding:14px;border-bottom:1px solid var(--border);cursor:pointer;" onclick="viewRun('${r.id}')">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
                     <div>
-                        <div style="font-weight:600;font-size:14px;">${escapeHtml(r.topic).substring(0, 80)}${r.topic.length > 80 ? '...' : ''}</div>
+                        <div style="font-weight:600;font-size:14px;" title="${escapeHtml(r.topic)}">${escapeHtml(r.topic).substring(0, 80)}${r.topic.length > 80 ? '...' : ''}</div>
                         <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">${r.id} · ${r.current_round || 0} rounds · ${formatDate(r.created_at)}</div>
                     </div>
                     <span class="badge ${statusBadge(r.status)}">${r.status}</span>
@@ -948,9 +947,9 @@ async function loadRuns() {
         tbody.innerHTML = runs.map(r => `
             <tr>
                 <td><code style="font-size:12px;">${r.id}</code></td>
-                <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.topic)}</td>
+                <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(r.topic)}">${escapeHtml(r.topic)}</td>
                 <td><span class="badge ${statusBadge(r.status)}">${r.status}</span></td>
-                <td>${r.current_phase || '-'}</td>
+                <td>${(r.current_phase || '-').substring(0, 40)}${(r.current_phase || '').length > 40 ? '…' : ''}</td>
                 <td>${r.current_round || 0}/${r.max_rounds || 3}</td>
                 <td style="font-size:12px;color:var(--text-muted);">${formatDate(r.created_at)}</td>
                 <td>
@@ -978,7 +977,7 @@ async function viewRun(runId) {
         // Status & Timeline
         html += `<div style="margin-bottom:16px;">`;
         html += `<span class="badge ${statusBadge(run.status)}" style="font-size:13px;">${run.status}</span>`;
-        html += ` <span style="color:var(--text-muted);font-size:13px;">Round ${run.current_round || 0}/${run.max_rounds || 3} · ${run.current_phase || 'N/A'}</span>`;
+        html += ` <span style="color:var(--text-muted);font-size:13px;">Round ${run.current_round || 0}/${run.max_rounds || 3} · ${escapeHtml(run.current_phase || 'N/A')}</span>`;
         html += `</div>`;
 
         // Phase timeline
@@ -1044,10 +1043,10 @@ async function viewRun(runId) {
             html += `<div class="table-wrap"><table><thead><tr><th>Phase</th><th>Round</th><th>Role</th><th>Status</th><th>Duration</th></tr></thead><tbody>`;
             data.subagents.forEach(s => {
                 html += `<tr>
-                    <td>${s.phase}</td>
-                    <td>${s.round_num}</td>
-                    <td>${s.agent_role}</td>
-                    <td><span class="badge ${s.status === 'completed' ? 'badge-green' : s.status === 'running' ? 'badge-yellow' : 'badge-red'}">${s.status}</span></td>
+                    <td>${escapeHtml(s.phase)}</td>
+                    <td>${escapeHtml(String(s.round_num))}</td>
+                    <td>${escapeHtml(s.agent_role)}</td>
+                    <td><span class="badge ${s.status === 'completed' ? 'badge-green' : s.status === 'running' ? 'badge-yellow' : 'badge-red'}">${escapeHtml(s.status)}</span></td>
                     <td>${s.duration_ms ? (s.duration_ms/1000).toFixed(1)+'s' : '-'}</td>
                 </tr>`;
             });
@@ -1081,34 +1080,61 @@ async function deleteRun(runId) {
 }
 
 // ===== Active Pipelines =====
+let activePollTimer = null;
+
+function startActivePolling() {
+    stopActivePolling();
+    activePollTimer = setInterval(loadActivePipelines, 3000);
+}
+
+function stopActivePolling() {
+    if (activePollTimer) {
+        clearInterval(activePollTimer);
+        activePollTimer = null;
+    }
+}
+
 async function loadActivePipelines() {
+    const container = document.getElementById('active-pipelines');
+    let runs;
     try {
-        const runs = await api('/api/research/runs');
-        const active = runs.filter(r => r.status === 'running');
-        const container = document.getElementById('active-pipelines');
+        runs = await api('/api/research/runs');
+    } catch (e) {
+        container.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><h3>Could not load pipelines</h3><p>The dashboard backend is not responding. It will retry automatically.</p></div>';
+        return;
+    }
 
-        if (active.length === 0) {
-            container.innerHTML = '<div class="empty-state"><div class="icon">⚡</div><h3>No active pipelines</h3><p>Start a research run to see it here.</p></div>';
-            return;
-        }
+    const running = runs.filter(r => r.status === 'running');
+    // Keep recently failed runs visible so an early failure is not mistaken for "nothing happened"
+    const recentFailures = runs.filter(r => r.status === 'error' &&
+        Date.now() - new Date(r.updated_at || r.created_at).getTime() < 60 * 60 * 1000);
 
-        container.innerHTML = active.map(r => `
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">🔬 ${escapeHtml(r.topic).substring(0, 60)}</div>
-                    <span class="badge badge-yellow">RUNNING</span>
-                </div>
+    if (running.length === 0 && recentFailures.length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="icon">⚡</div><h3>No active pipelines</h3><p>Start a research run to see it here in real-time.</p></div>';
+        return;
+    }
+
+    container.innerHTML = [...running, ...recentFailures].map(r => `
+        <div class="card" style="cursor:pointer;" onclick="viewRun('${r.id}')">
+            <div class="card-header">
+                <div class="card-title" title="${escapeHtml(r.topic)}">🔬 ${escapeHtml(r.topic).substring(0, 60)}${r.topic.length > 60 ? '...' : ''}</div>
+                <span class="badge ${r.status === 'running' ? 'badge-yellow' : 'badge-red'}">${r.status.toUpperCase()}</span>
+            </div>
+            ${r.status === 'error' ? `
+                <div style="font-size:13px;color:var(--red);">${escapeHtml((r.current_phase || 'Run failed').replace(/^error:\s*/, ''))}</div>
+                <button class="btn btn-sm btn-secondary" style="margin-top:10px;" onclick="event.stopPropagation();viewRun('${r.id}')">View details</button>
+            ` : `
                 <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text-secondary);margin-bottom:8px;">
-                    <span>Phase: ${r.current_phase || 'starting'}</span>
+                    <span>Phase: ${escapeHtml(r.current_phase || 'starting')}</span>
                     <span>Round: ${r.current_round || 0}/${r.max_rounds || 3}</span>
                 </div>
                 <div class="progress-bar">
                     <div class="progress-fill" style="width:${phaseProgress(r.current_phase)}%"></div>
                 </div>
-                <div style="font-size:11px;color:var(--text-muted);margin-top:8px;">ID: ${r.id} · Started: ${formatDate(r.created_at)}</div>
-            </div>
-        `).join('');
-    } catch (e) {}
+            `}
+            <div style="font-size:11px;color:var(--text-muted);margin-top:8px;">ID: ${r.id} · Started: ${formatDate(r.created_at)}</div>
+        </div>
+    `).join('');
 }
 
 // ===== API Keys =====
@@ -1197,7 +1223,9 @@ async function toggleKey(id) {
     try {
         await api(`/api/keys/${id}/toggle`, { method: 'POST' });
         loadKeys();
-    } catch (e) {}
+    } catch (e) {
+        toast('Failed to toggle key', 'error');
+    }
 }
 
 async function loadProviders() {

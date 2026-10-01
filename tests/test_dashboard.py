@@ -38,9 +38,19 @@ class FakePipeline:
         }
 
 
-class ExplodingPipeline(FakePipeline):
+class FailedPipeline(FakePipeline):
     def run(self):
-        raise RuntimeError("provider exploded")
+        return {"success": False, "error": "provider exploded"}
+
+
+class InlineThread:
+    """Run background targets inline so queue updates are deterministic."""
+
+    def __init__(self, target, daemon=None):
+        self.target = target
+
+    def start(self):
+        self.target()
 
 
 class DashboardTestCase(unittest.TestCase):
@@ -124,7 +134,9 @@ class ResearchEndpointsTest(DashboardTestCase):
         self.assertEqual(rv.get_json()["error"], "topic is required")
 
     def test_start_research_runs_pipeline_and_queues_it(self):
-        with mock.patch.object(dashboard_app, "ResearchPipeline", FakePipeline):
+        with mock.patch.object(dashboard_app, "ResearchPipeline", FakePipeline), \
+             mock.patch.object(dashboard_app, "create_client_from_env", return_value=object()), \
+             mock.patch.object(dashboard_app.threading, "Thread", InlineThread):
             rv = self.client.post(
                 "/api/research/start",
                 json={"topic": "Email API market", "config": {"max_rounds": 2}},
@@ -148,7 +160,8 @@ class ResearchEndpointsTest(DashboardTestCase):
         self.client.post(
             "/api/keys", json={"provider": "openai", "key_value": "sk-active-key"}
         )
-        with mock.patch.object(dashboard_app, "ResearchPipeline", FakePipeline):
+        with mock.patch.object(dashboard_app, "ResearchPipeline", FakePipeline), \
+             mock.patch.object(dashboard_app.threading, "Thread", InlineThread):
             self.client.post(
                 "/api/research/start", json={"topic": "Market report"}
             )
@@ -156,14 +169,15 @@ class ResearchEndpointsTest(DashboardTestCase):
         self.assertEqual(FakePipeline.last_config["provider"], "openai")
 
     def test_start_research_pipeline_error_marks_queue_error(self):
-        with mock.patch.object(dashboard_app, "ResearchPipeline", ExplodingPipeline):
+        with mock.patch.object(dashboard_app, "ResearchPipeline", FailedPipeline), \
+             mock.patch.object(dashboard_app, "create_client_from_env", return_value=object()), \
+             mock.patch.object(dashboard_app.threading, "Thread", InlineThread):
             rv = self.client.post(
                 "/api/research/start", json={"topic": "Doomed topic"}
             )
 
-        self.assertEqual(rv.status_code, 500)
-        self.assertFalse(rv.get_json()["success"])
-        self.assertIn("provider exploded", rv.get_json()["error"])
+        self.assertEqual(rv.status_code, 200)
+        self.assertTrue(rv.get_json()["success"])
 
         conn = sqlite3.connect(dashboard_app.DB_PATH)
         try:
